@@ -738,6 +738,8 @@
                 "POWER10 v1.0")
     POWERPC_DEF("power10_v2.0",  CPU_POWERPC_POWER10_DD20,           POWER10,
                 "POWER10 v2.0")
+    POWERPC_DEF("power11",  CPU_POWERPC_POWER11,           POWER11,
+                "POWER11")
 #endif /* defined (TARGET_PPC64) */
 
 /***************************************************************************/
