@@ -176,6 +176,61 @@ struct PnvXScomInterfaceClass {
 #define PNV10_XSCOM_PEC_PCI_BASE   0x8010800 /* index goes upwards ... */
 #define PNV10_XSCOM_PEC_PCI_SIZE   0x200
 
+/*
+ * Layout of the XSCOM PCB addresses (POWER 11)
+ */
+#define PNV11_XSCOM_EQ_CHIPLET(core)  (0x20 + ((core) >> 2))
+#define PNV11_XSCOM_EQ(chiplet)       ((chiplet) << 24)
+#define PNV11_XSCOM_EC(proc)                    \
+    ((0x2 << 16) | ((1 << (3 - (proc))) << 12))
+
+#define PNV11_XSCOM_QME(chiplet) \
+        (PNV11_XSCOM_EQ(chiplet) | (0xE << 16))
+
+/*
+ * Make the region larger by 0x1000 (instead of starting at an offset) so the
+ * modelled addresses start from 0
+ */
+#define PNV11_XSCOM_QME_BASE(core)     \
+    ((uint64_t) PNV11_XSCOM_QME(PNV11_XSCOM_EQ_CHIPLET(core)))
+#define PNV11_XSCOM_QME_SIZE        (0x8000 + 0x1000)
+
+#define PNV11_XSCOM_EQ_BASE(core)     \
+    ((uint64_t) PNV11_XSCOM_EQ(PNV11_XSCOM_EQ_CHIPLET(core)))
+#define PNV11_XSCOM_EQ_SIZE        0x20000
+
+#define PNV11_XSCOM_EC_BASE(core) \
+    ((uint64_t) PNV11_XSCOM_EQ_BASE(core) | PNV11_XSCOM_EC(core & 0x3))
+#define PNV11_XSCOM_EC_SIZE        0x1000
+
+#define PNV11_XSCOM_PSIHB_BASE     0x3011D00
+#define PNV11_XSCOM_PSIHB_SIZE     0x100
+
+#define PNV11_XSCOM_I2CM_BASE      PNV9_XSCOM_I2CM_BASE
+#define PNV11_XSCOM_I2CM_SIZE      PNV9_XSCOM_I2CM_SIZE
+
+#define PNV11_XSCOM_OCC_BASE       PNV9_XSCOM_OCC_BASE
+#define PNV11_XSCOM_OCC_SIZE       PNV9_XSCOM_OCC_SIZE
+
+#define PNV11_XSCOM_SBE_CTRL_BASE  PNV9_XSCOM_SBE_CTRL_BASE
+#define PNV11_XSCOM_SBE_CTRL_SIZE  PNV9_XSCOM_SBE_CTRL_SIZE
+
+#define PNV11_XSCOM_SBE_MBOX_BASE  PNV9_XSCOM_SBE_MBOX_BASE
+#define PNV11_XSCOM_SBE_MBOX_SIZE  PNV9_XSCOM_SBE_MBOX_SIZE
+
+#define PNV11_XSCOM_PBA_BASE       0x01010CDA
+#define PNV11_XSCOM_PBA_SIZE       0x40
+
+#define PNV11_XSCOM_XIVE2_BASE     0x2010800
+#define PNV11_XSCOM_XIVE2_SIZE     0x400
+
+#define PNV11_XSCOM_PEC_NEST_BASE  0x3011800 /* index goes downwards ... */
+#define PNV11_XSCOM_PEC_NEST_SIZE  0x100
+
+#define PNV11_XSCOM_PEC_PCI_BASE   0x8010800 /* index goes upwards ... */
+#define PNV11_XSCOM_PEC_PCI_SIZE   0x200
+
+
 void pnv_xscom_init(PnvChip *chip, uint64_t size, hwaddr addr);
 int pnv_dt_xscom(PnvChip *chip, void *fdt, int root_offset,
                  uint64_t xscom_base, uint64_t xscom_size,

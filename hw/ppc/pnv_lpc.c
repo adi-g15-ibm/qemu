@@ -692,6 +692,19 @@ static void pnv_lpc_power10_class_init(ObjectClass *klass, void *data)
     dc->desc = "PowerNV LPC Controller POWER10";
 }
 
+static void pnv_lpc_power11_class_init(ObjectClass *klass, void *data)
+{
+    DeviceClass *dc = DEVICE_CLASS(klass);
+
+    dc->desc = "PowerNV LPC Controller POWER11";
+}
+
+static const TypeInfo pnv_lpc_power11_info = {
+    .name          = TYPE_PNV11_LPC,
+    .parent        = TYPE_PNV10_LPC,
+    .class_init    = pnv_lpc_power11_class_init,
+};
+
 static const TypeInfo pnv_lpc_power10_info = {
     .name          = TYPE_PNV10_LPC,
     .parent        = TYPE_PNV9_LPC,
@@ -771,6 +784,7 @@ static void pnv_lpc_register_types(void)
     type_register_static(&pnv_lpc_power8_info);
     type_register_static(&pnv_lpc_power9_info);
     type_register_static(&pnv_lpc_power10_info);
+    type_register_static(&pnv_lpc_power11_info);
 }
 
 type_init(pnv_lpc_register_types)

@@ -127,6 +127,36 @@ struct Pnv10Chip {
 #define PNV10_PIR2FUSEDCORE(pir) (((pir) >> 3) & 0xf)
 #define PNV10_PIR2CHIP(pir)      (((pir) >> 8) & 0x7f)
 
+#define TYPE_PNV11_CHIP "pnv11-chip"
+DECLARE_INSTANCE_CHECKER(Pnv11Chip, PNV11_CHIP,
+                         TYPE_PNV11_CHIP)
+
+struct Pnv11Chip {
+    /*< private >*/
+    PnvChip      parent_obj;
+
+    /*< public >*/
+    PnvXive2     xive;
+    Pnv9Psi      psi;
+    PnvLpcController lpc;
+    PnvOCC       occ;
+    PnvSBE       sbe;
+    PnvHomer     homer;
+
+    uint32_t     nr_quads;
+    PnvQuad      *quads;
+
+/* TODO: Check if P11 still should have 'PnvPhb4PecState' or newer Phb5 */
+#define PNV11_CHIP_MAX_PEC 2
+    PnvPhb4PecState pecs[PNV11_CHIP_MAX_PEC];
+
+#define PNV11_CHIP_MAX_I2C 4
+    PnvI2C       i2c[PNV11_CHIP_MAX_I2C];
+};
+
+#define PNV10_PIR2FUSEDCORE(pir) (((pir) >> 3) & 0xf)
+#define PNV10_PIR2CHIP(pir)      (((pir) >> 8) & 0x7f)
+
 struct PnvChipClass {
     /*< private >*/
     SysBusDeviceClass parent_class;
