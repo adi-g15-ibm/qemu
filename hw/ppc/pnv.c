@@ -2231,35 +2231,6 @@ static int pnv10_xive_match_nvt(XiveFabric *xfb, uint8_t format,
     return total_count;
 }
 
-static int pnv11_xive_match_nvt(XiveFabric *xfb, uint8_t format,
-                                uint8_t nvt_blk, uint32_t nvt_idx,
-                                bool cam_ignore, uint8_t priority,
-                                uint32_t logic_serv,
-                                XiveTCTXMatch *match)
-{
-    PnvMachineState *pnv = PNV_MACHINE(xfb);
-    int total_count = 0;
-    int i;
-
-    for (i = 0; i < pnv->num_chips; i++) {
-        Pnv11Chip *chip11 = PNV11_CHIP(pnv->chips[i]);
-        XivePresenter *xptr = XIVE_PRESENTER(&chip11->xive);
-        XivePresenterClass *xpc = XIVE_PRESENTER_GET_CLASS(xptr);
-        int count;
-
-        count = xpc->match_nvt(xptr, format, nvt_blk, nvt_idx, cam_ignore,
-                               priority, logic_serv, match);
-
-        if (count < 0) {
-            return count;
-        }
-
-        total_count += count;
-    }
-
-    return total_count;
-}
-
 static void pnv_machine_power8_class_init(ObjectClass *oc, void *data)
 {
     MachineClass *mc = MACHINE_CLASS(oc);
@@ -2362,7 +2333,7 @@ static void pnv_machine_power11_class_init(ObjectClass *oc, void *data)
     pmc->compat_size = sizeof(compat);
     pmc->dt_power_mgt = pnv_dt_power_mgt;
 
-    xfc->match_nvt = pnv11_xive_match_nvt;
+    xfc->match_nvt = pnv10_xive_match_nvt;
 
     machine_class_allow_dynamic_sysbus_dev(mc, TYPE_PNV_PHB);
 }

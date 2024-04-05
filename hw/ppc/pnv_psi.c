@@ -939,6 +939,7 @@ static const TypeInfo pnv_psi_power10_info = {
     .name          = TYPE_PNV10_PSI,
     .parent        = TYPE_PNV9_PSI,
     .class_init    = pnv_psi_power10_class_init,
+    .class_base_init = pnv_psi_power10_class_init,
 };
 
 static void pnv_psi_power11_class_init(ObjectClass *klass, void *data)
@@ -949,8 +950,6 @@ static void pnv_psi_power11_class_init(ObjectClass *klass, void *data)
 
     dc->desc    = "PowerNV PSI Controller POWER11";
 
-    ppc->xscom_pcba = PNV11_XSCOM_PSIHB_BASE;
-    ppc->xscom_size = PNV11_XSCOM_PSIHB_SIZE;
     ppc->compat     = compat;
     ppc->compat_size = sizeof(compat);
 }

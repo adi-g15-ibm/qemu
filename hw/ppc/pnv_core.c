@@ -222,52 +222,6 @@ static const MemoryRegionOps pnv_core_power10_xscom_ops = {
     .endianness = DEVICE_BIG_ENDIAN,
 };
 
-/*
- * POWER11 core controls
- */
-
-#define PNV11_XSCOM_EC_CORE_THREAD_STATE    0x412
-
-static uint64_t pnv_core_power11_xscom_read(void *opaque, hwaddr addr,
-                                           unsigned int width)
-{
-    uint32_t offset = addr >> 3;
-    uint64_t val = 0;
-
-    switch (offset) {
-    case PNV11_XSCOM_EC_CORE_THREAD_STATE:
-        val = 0;
-        break;
-    default:
-        qemu_log_mask(LOG_UNIMP, "%s: unimp read 0x%08x\n", __func__,
-                      offset);
-    }
-
-    return val;
-}
-
-static void pnv_core_power11_xscom_write(void *opaque, hwaddr addr,
-                                         uint64_t val, unsigned int width)
-{
-    uint32_t offset = addr >> 3;
-
-    switch (offset) {
-    default:
-        qemu_log_mask(LOG_UNIMP, "%s: unimp write 0x%08x\n", __func__,
-                      offset);
-    }
-}
-
-static const MemoryRegionOps pnv_core_power11_xscom_ops = {
-    .read = pnv_core_power11_xscom_read,
-    .write = pnv_core_power11_xscom_write,
-    .valid.min_access_size = 8,
-    .valid.max_access_size = 8,
-    .impl.min_access_size = 8,
-    .impl.max_access_size = 8,
-    .endianness = DEVICE_BIG_ENDIAN,
-};
-
 static void pnv_core_cpu_realize(PnvCore *pc, PowerPCCPU *cpu, Error **errp,
                                  int thread_index)
 {
@@ -418,14 +372,6 @@ static void pnv_core_power10_class_init(ObjectClass *oc, void *data)
     pcc->xscom_size = PNV10_XSCOM_EC_SIZE;
 }
 
-static void pnv_core_power11_class_init(ObjectClass *oc, void *data)
-{
-    PnvCoreClass *pcc = PNV_CORE_CLASS(oc);
-
-    pcc->xscom_ops = &pnv_core_power11_xscom_ops;
-    pcc->xscom_size = PNV11_XSCOM_EC_SIZE;
-}
-
 static void pnv_core_class_init(ObjectClass *oc, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(oc);
@@ -456,8 +402,16 @@ static const TypeInfo pnv_core_infos[] = {
     DEFINE_PNV_CORE_TYPE(power8, "power8_v2.0"),
     DEFINE_PNV_CORE_TYPE(power8, "power8nvl_v1.0"),
     DEFINE_PNV_CORE_TYPE(power9, "power9_v2.2"),
-    DEFINE_PNV_CORE_TYPE(power10, "power10_v2.0"),
-    DEFINE_PNV_CORE_TYPE(power11, "power11"),
+    {
+        .parent = TYPE_PNV_CORE,
+        .name = PNV_CORE_TYPE_NAME("power10_v2.0"),
+        .class_init = pnv_core_power10_class_init,
+        .class_base_init = pnv_core_power10_class_init,
+    },
+    {
+        .parent = PNV_CORE_TYPE_NAME("power10_v2.0"),
+        .name = PNV_CORE_TYPE_NAME("power11"),
+    }
 };
 
 DEFINE_TYPES(pnv_core_infos)
@@ -553,16 +507,6 @@ static const MemoryRegionOps pnv_quad_power10_xscom_ops = {
     .endianness = DEVICE_BIG_ENDIAN,
 };
 
-static const MemoryRegionOps pnv_quad_power11_xscom_ops = {
-    .read = pnv_quad_power10_xscom_read,
-    .write = pnv_quad_power10_xscom_write,
-    .valid.min_access_size = 8,
-    .valid.max_access_size = 8,
-    .impl.min_access_size = 8,
-    .impl.max_access_size = 8,
-    .endianness = DEVICE_BIG_ENDIAN,
-};
-
 #define P10_QME_SPWU_HYP 0x83c
 #define P10_QME_SSH_HYP  0x82c
 
@@ -601,16 +545,6 @@ static void pnv_qme_power10_xscom_write(void *opaque, hwaddr addr,
 }
 
 static const MemoryRegionOps pnv_qme_power10_xscom_ops = {
-    .read = pnv_qme_power10_xscom_read,
-    .write = pnv_qme_power10_xscom_write,
-    .valid.min_access_size = 8,
-    .valid.max_access_size = 8,
-    .impl.min_access_size = 8,
-    .impl.max_access_size = 8,
-    .endianness = DEVICE_BIG_ENDIAN,
-};
-
-static const MemoryRegionOps pnv_qme_power11_xscom_ops = {
     .read = pnv_qme_power10_xscom_read,
     .write = pnv_qme_power10_xscom_write,
     .valid.min_access_size = 8,
@@ -682,20 +616,6 @@ static void pnv_quad_power10_class_init(ObjectClass *oc, void *data)
     pqc->xscom_qme_size = PNV10_XSCOM_QME_SIZE;
 }
 
-static void pnv_quad_power11_class_init(ObjectClass *oc, void *data)
-{
-    PnvQuadClass *pqc = PNV_QUAD_CLASS(oc);
-    DeviceClass *dc = DEVICE_CLASS(oc);
-
-    dc->realize = pnv_quad_power10_realize;
-
-    pqc->xscom_ops = &pnv_quad_power11_xscom_ops;
-    pqc->xscom_size = PNV11_XSCOM_EQ_SIZE;
-
-    pqc->xscom_qme_ops = &pnv_qme_power11_xscom_ops;
-    pqc->xscom_qme_size = PNV11_XSCOM_QME_SIZE;
-}
-
 static void pnv_quad_class_init(ObjectClass *oc, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(oc);
@@ -722,11 +642,11 @@ static const TypeInfo pnv_quad_infos[] = {
         .parent = TYPE_PNV_QUAD,
         .name = PNV_QUAD_TYPE_NAME("power10"),
         .class_init = pnv_quad_power10_class_init,
+        .class_base_init = pnv_quad_power10_class_init,
     },
     {
-        .parent = TYPE_PNV_QUAD,
+        .parent = PNV_QUAD_TYPE_NAME("power10"),
         .name = PNV_QUAD_TYPE_NAME("power11"),
-        .class_init = pnv_quad_power11_class_init,
     },
 };
 

@@ -366,18 +366,14 @@ static const TypeInfo pnv_sbe_power10_type_info = {
     .name          = TYPE_PNV10_SBE,
     .parent        = TYPE_PNV9_SBE,
     .class_init    = pnv_sbe_power10_class_init,
+    .class_base_init = pnv_sbe_power10_class_init,
 };
 
 static void pnv_sbe_power11_class_init(ObjectClass *klass, void *data)
 {
-    PnvSBEClass *psc = PNV_SBE_CLASS(klass);
     DeviceClass *dc = DEVICE_CLASS(klass);
 
     dc->desc = "PowerNV SBE Controller (POWER11)";
-    psc->xscom_ctrl_size = PNV11_XSCOM_SBE_CTRL_SIZE;
-    psc->xscom_ctrl_ops = &pnv_sbe_power9_xscom_ctrl_ops;
-    psc->xscom_mbox_size = PNV11_XSCOM_SBE_MBOX_SIZE;
-    psc->xscom_mbox_ops = &pnv_sbe_power9_xscom_mbox_ops;
 }
 
 static const TypeInfo pnv_sbe_power11_type_info = {
