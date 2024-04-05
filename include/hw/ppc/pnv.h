@@ -80,8 +80,6 @@ struct PnvMachineClass {
     const char *compat;
     int compat_size;
 
-    const char *cpu_model;
-
     void (*dt_power_mgt)(PnvMachineState *pnv, void *fdt);
 };
 

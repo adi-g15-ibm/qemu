@@ -152,6 +152,8 @@ struct PnvChipClass {
     uint32_t     i2c_num_engines;
     const int    *i2c_ports_per_engine;
 
+    const char   *cpu_model;
+
     DeviceRealize parent_realize;
 
     uint32_t (*core_pir)(PnvChip *chip, uint32_t core_id);

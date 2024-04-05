@@ -348,8 +348,9 @@ static void pnv_chip_power9_dt_populate(PnvChip *chip, void *fdt)
 
 static void pnv_chip_power10_dt_populate(PnvChip *chip, void *fdt)
 {
-    PnvMachineClass *pmc = PNV_MACHINE_CLASS(qdev_get_machine());
-    const char *cpu_model = pmc->cpu_model;
+
+    PnvChipClass *pcc = PNV_CHIP_GET_CLASS(chip);
+    const char *cpu_model = pcc->cpu_model;
     const char *compat = g_strconcat("ibm,", cpu_model, "-xscom\0ibm,xscom", NULL);
     int i;
 
@@ -1355,6 +1356,7 @@ static void pnv_chip_power8e_class_init(ObjectClass *klass, void *data)
     k->xscom_core_base = pnv_chip_power8_xscom_core_base;
     k->xscom_pcba = pnv_chip_power8_xscom_pcba;
     dc->desc = "PowerNV Chip POWER8E";
+    k->cpu_model = "power8";
 
     device_class_set_parent_realize(dc, pnv_chip_power8_realize,
                                     &k->parent_realize);
@@ -1379,6 +1381,7 @@ static void pnv_chip_power8_class_init(ObjectClass *klass, void *data)
     k->xscom_core_base = pnv_chip_power8_xscom_core_base;
     k->xscom_pcba = pnv_chip_power8_xscom_pcba;
     dc->desc = "PowerNV Chip POWER8";
+    k->cpu_model = "power8";
 
     device_class_set_parent_realize(dc, pnv_chip_power8_realize,
                                     &k->parent_realize);
@@ -1403,6 +1406,7 @@ static void pnv_chip_power8nvl_class_init(ObjectClass *klass, void *data)
     k->xscom_core_base = pnv_chip_power8_xscom_core_base;
     k->xscom_pcba = pnv_chip_power8_xscom_pcba;
     dc->desc = "PowerNV Chip POWER8NVL";
+    k->cpu_model = "power8";
 
     device_class_set_parent_realize(dc, pnv_chip_power8_realize,
                                     &k->parent_realize);
@@ -1661,6 +1665,7 @@ static void pnv_chip_power9_class_init(ObjectClass *klass, void *data)
     k->xscom_core_base = pnv_chip_power9_xscom_core_base;
     k->xscom_pcba = pnv_chip_power9_xscom_pcba;
     dc->desc = "PowerNV Chip POWER9";
+    k->cpu_model = "power9";
     k->num_pecs = PNV9_CHIP_MAX_PEC;
     k->i2c_num_engines = PNV9_CHIP_MAX_I2C;
     k->i2c_ports_per_engine = i2c_ports_per_engine;
@@ -1700,8 +1705,8 @@ static void pnv_chip_power10_instance_init(Object *obj)
 static void pnv_chip_power10_quad_realize(Pnv10Chip *chip10, Error **errp)
 {
     PnvChip *chip = PNV_CHIP(chip10);
-    PnvMachineClass *pmc = PNV_MACHINE_CLASS(qdev_get_machine());
-    const char *cpu_model = pmc->cpu_model;
+    PnvChipClass *chip_class = PNV_CHIP_GET_CLASS(chip);
+    const char *cpu_model = chip_class->cpu_model;
     int i;
 
     chip10->nr_quads = DIV_ROUND_UP(chip->nr_cores, 4);
@@ -1912,6 +1917,7 @@ static void pnv_chip_power10_class_init(ObjectClass *klass, void *data)
     k->xscom_core_base = pnv_chip_power10_xscom_core_base;
     k->xscom_pcba = pnv_chip_power10_xscom_pcba;
     dc->desc = "PowerNV Chip POWER10";
+    k->cpu_model = "power10";
     k->num_pecs = PNV10_CHIP_MAX_PEC;
     k->i2c_num_engines = PNV10_CHIP_MAX_I2C;
     k->i2c_ports_per_engine = i2c_ports_per_engine;
@@ -1940,6 +1946,7 @@ static void pnv_chip_power11_class_init(ObjectClass *klass, void *data)
     k->xscom_core_base = pnv_chip_power10_xscom_core_base;
     k->xscom_pcba = pnv_chip_power10_xscom_pcba;
     dc->desc = "PowerNV Chip POWER11";
+    k->cpu_model = "power11";
     k->num_pecs = PNV10_CHIP_MAX_PEC;
     k->i2c_num_engines = PNV10_CHIP_MAX_I2C;
     k->i2c_ports_per_engine = i2c_ports_per_engine;
@@ -2244,8 +2251,7 @@ static void pnv_machine_power8_class_init(ObjectClass *oc, void *data)
     };
 
     mc->desc = "IBM PowerNV (Non-Virtualized) POWER8";
-    pmc->cpu_model = "power8_v2.0";
-    mc->default_cpu_type = POWERPC_CPU_TYPE_NAME_DYN(pmc->cpu_model);
+    mc->default_cpu_type = POWERPC_CPU_TYPE_NAME("power8_v2.0");
     compat_props_add(mc->compat_props, phb_compat, G_N_ELEMENTS(phb_compat));
 
     xic->icp_get = pnv_icp_get;
@@ -2271,8 +2277,7 @@ static void pnv_machine_power9_class_init(ObjectClass *oc, void *data)
     };
 
     mc->desc = "IBM PowerNV (Non-Virtualized) POWER9";
-    pmc->cpu_model = "power9_v2.2";
-    mc->default_cpu_type = POWERPC_CPU_TYPE_NAME_DYN(pmc->cpu_model);
+    mc->default_cpu_type = POWERPC_CPU_TYPE_NAME("power9_v2.2");
     compat_props_add(mc->compat_props, phb_compat, G_N_ELEMENTS(phb_compat));
 
     xfc->match_nvt = pnv_match_nvt;
@@ -2299,8 +2304,7 @@ static void pnv_machine_power10_class_init(ObjectClass *oc, void *data)
     };
 
     mc->desc = "IBM PowerNV (Non-Virtualized) POWER10";
-    pmc->cpu_model = "power10_v2.0";
-    mc->default_cpu_type = POWERPC_CPU_TYPE_NAME_DYN(pmc->cpu_model);
+    mc->default_cpu_type = POWERPC_CPU_TYPE_NAME("power10_v2.0");
     compat_props_add(mc->compat_props, phb_compat, G_N_ELEMENTS(phb_compat));
 
     pmc->compat = compat;
@@ -2325,8 +2329,7 @@ static void pnv_machine_power11_class_init(ObjectClass *oc, void *data)
     };
 
     mc->desc = "IBM PowerNV (Non-Virtualized) POWER11";
-    pmc->cpu_model = "power11";
-    mc->default_cpu_type = POWERPC_CPU_TYPE_NAME_DYN(pmc->cpu_model);
+    mc->default_cpu_type = POWERPC_CPU_TYPE_NAME("power11");
     compat_props_add(mc->compat_props, phb_compat, G_N_ELEMENTS(phb_compat));
 
     pmc->compat = compat;
