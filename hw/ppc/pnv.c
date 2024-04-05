@@ -351,18 +351,16 @@ static void pnv_chip_power10_dt_populate(PnvChip *chip, void *fdt)
 
     PnvChipClass *pcc = PNV_CHIP_GET_CLASS(chip);
     const char *cpu_model = pcc->cpu_model;
-    const char *compat;
-    int compat_len = 0;
+    const char compat_p10[] = "ibm,power10-xscom\0ibm,xscom";
+    const char *compat = compat_p10;
+    int compat_len = sizeof(compat_p10);
+    int i;
 
-    if (!g_strcmp0(cpu_model, "power10")) {
-        const char compat_p10[] = "ibm,power10-xscom\0ibm,xscom";
-        compat_len = sizeof(compat_p10);
-    } else if (!g_strcmp0(cpu_model, "power11")) {
+    if (!g_strcmp0(cpu_model, "power11")) {
         const char compat_p11[] = "ibm,power11-xscom\0ibm,xscom";
+        compat = compat_p11;
         compat_len = sizeof(compat_p11);
     }
-
-    int i;
 
     pnv_dt_xscom(chip, fdt, 0,
                  cpu_to_be64(PNV10_XSCOM_BASE(chip)),
