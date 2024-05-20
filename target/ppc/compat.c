@@ -139,10 +139,27 @@ static bool pcc_compat(PowerPCCPUClass *pcc, uint32_t compat_pvr,
         /* Outside specified range */
         return false;
     }
+
+    uint32_t pvr_base = pcc->pvr & CPU_POWERPC_POWER_SERVER_MASK;
     if (!(pcc->pcr_supported & compat->pcr_level)) {
         /* Not supported by this CPU */
         return false;
+    } else if (pvr_base == CPU_POWERPC_POWER10_BASE) {
+        /* Hack: chose Power10's compat entry instead of Power11's compat, as
+         * both of them have same PCR */
+
+        /* Get the previous entry in compat_table */
+        const CompatInfo* prev_compat = compat - 1;
+
+        /* Ensure that 'prev_compat' is in the compat_table */
+        if (prev_compat >= compat_table) {
+            if (prev_compat->pcr_level == compat->pcr_level) {
+                /* Don't chose current compat entry */
+                return false;
+            }
+        }
     }
+
     return true;
 }
 
