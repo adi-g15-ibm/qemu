@@ -1162,7 +1162,8 @@ target_ulong do_client_architecture_support(PowerPCCPU *cpu,
     bool guest_xive;
     CPUState *cs;
     void *fdt;
-    uint32_t max_compat = spapr->max_compat_pvr;
+    PowerPCCPUClass *pcc = POWERPC_CPU_GET_CLASS(cpu);
+    uint32_t max_compat = pcc->logical_pvr; /* compat logical pvr can't be greater than current processor's logical pvr */
 
     /* CAS is supposed to be called early when only the boot vCPU is active. */
     CPU_FOREACH(cs) {
