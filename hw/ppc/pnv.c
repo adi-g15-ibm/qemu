@@ -736,10 +736,21 @@ static void pnv_reset(MachineState *machine, ShutdownCause reason)
         }
     }
 
-    fdt = pnv_dt_create(machine);
+    if (machine->dtb) {
+        warn_report("with manually passed dtb, some options like '-append'"
+                " will get ignored and the dtb passed will be used as-is");
 
-    /* Pack resulting tree */
-    _FDT((fdt_pack(fdt)));
+        /* read the file 'machine->dtb', and load it into 'fdt' buffer */
+        if (!g_file_get_contents(machine->dtb, (gchar **)&fdt, NULL, NULL)) {
+            error_report("Could not load dtb '%s'", machine->dtb);
+            exit(1);
+        }
+    } else {
+        fdt = pnv_dt_create(machine);
+
+        /* Pack resulting tree */
+        _FDT((fdt_pack(fdt)));
+    }
 
     qemu_fdt_dumpdtb(fdt, fdt_totalsize(fdt));
     cpu_physical_memory_write(PNV_FDT_ADDR, fdt, fdt_totalsize(fdt));
@@ -952,6 +963,14 @@ static void pnv_init(MachineState *machine)
         g_free(sz);
         exit(EXIT_FAILURE);
     }
+
+    /* checks for invalid option combinations */
+    if (machine->dtb && (strlen(machine->kernel_cmdline) != 0)) {
+        error_report("-append and -dtb cannot be used together, as passed"
+                " command line is ignored in case of custom dtb");
+        exit(EXIT_FAILURE);
+    }
+
     memory_region_add_subregion(get_system_memory(), 0, machine->ram);
 
     /*
