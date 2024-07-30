@@ -714,6 +714,8 @@ static void pnv_reset(MachineState *machine, ShutdownCause reason)
     PnvMachineState *pnv = PNV_MACHINE(machine);
     IPMIBmc *bmc;
     void *fdt;
+    FILE *fdt_file;
+    uint32_t fdt_size;
 
     qemu_devices_reset(reason);
 
@@ -736,10 +738,31 @@ static void pnv_reset(MachineState *machine, ShutdownCause reason)
         }
     }
 
-    fdt = pnv_dt_create(machine);
+    if (machine->dtb) {
+        warn_report("with manually passed dtb, some options like '-append'"
+                " might ignored and the dtb passed will be used as-is");
 
-    /* Pack resulting tree */
-    _FDT((fdt_pack(fdt)));
+        fdt = g_malloc0(FDT_MAX_SIZE);
+
+        /* read the file 'machine->dtb', and load it into 'fdt' buffer */
+        fdt_file = fopen(machine->dtb, "r");
+        if (fdt_file != NULL) {
+            fdt_size = fread(fdt, sizeof(char), FDT_MAX_SIZE, fdt_file);
+            if (ferror(fdt_file) != 0) {
+                error_report("Could not load dtb '%s'",
+                             machine->dtb);
+                exit(1);
+            }
+
+            /* mark end of the fdt buffer with '\0' */
+            ((char *)fdt)[fdt_size] = '\0';
+        }
+    } else {
+        fdt = pnv_dt_create(machine);
+
+        /* Pack resulting tree */
+        _FDT((fdt_pack(fdt)));
+    }
 
     qemu_fdt_dumpdtb(fdt, fdt_totalsize(fdt));
     cpu_physical_memory_write(PNV_FDT_ADDR, fdt, fdt_totalsize(fdt));
