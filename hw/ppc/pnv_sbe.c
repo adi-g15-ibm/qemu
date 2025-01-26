@@ -497,13 +497,10 @@ static void do_sbe_msg(PnvSBE *sbe)
 
 static void pnv_sbe_set_sbe_doorbell(PnvSBE *sbe, uint64_t val)
 {
-    val &= HOST_SBE_MSG_WAITING;
     sbe->sbe_doorbell = val;
 
-    if (val & HOST_SBE_MSG_WAITING) {
-        sbe->sbe_doorbell &= ~HOST_SBE_MSG_WAITING;
-        do_sbe_msg(sbe);
-    }
+    sbe->sbe_doorbell &= ~HOST_SBE_MSG_WAITING;
+    do_sbe_msg(sbe);
 }
 
 static uint64_t pnv_sbe_power9_xscom_mbox_read(void *opaque, hwaddr addr,
