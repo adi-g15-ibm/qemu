@@ -264,12 +264,43 @@ static void pnv_mpipl_preserve_mem(void) {
     uint8_t *copy_buffer;
 
     cpu_physical_memory_read(DUMP_METADATA_AREA_BASE, metadata, DUMP_METADATA_AREA_SIZE);
+
+    printf("=============================================\n");
+    printf("MPIPL Metadata:\n");
+    printf("\tCrashing PIR: %x\n", cpu_to_be32(metadata->crashing_pir));
+    printf("\tKernel Tag: %lx\n", cpu_to_be64(metadata->kernel_tag));
+    printf("\tBoot Memory Size: %lx\n", cpu_to_be64(metadata->kernel_tag));
+    printf("=============================================\n");
+
     cpu_physical_memory_read(MDST_TABLE_BASE, mdst, MDST_TABLE_SIZE);
-    cpu_physical_memory_read(MDDT_TABLE_BASE, mddt, MDDT_TABLE_SIZE);
 
     /* copied from skiboot */
     #define HRMOR_BIT (1ul << 63)
 
+    printf("=============================================\n");
+    printf("MDST:\n");
+    for (int i=0;; ++i) {
+        if ((mdst[i].addr == 0) && (mdst[i].size == 0))
+            break;
+
+        printf("%lx,%x,(%x) ", cpu_to_be64(mdst[i].addr) & ~HRMOR_BIT, cpu_to_be32(mdst[i].size), mdst[i].data_region);
+    }
+    printf("\n=============================================\n");
+    
+    cpu_physical_memory_read(MDDT_TABLE_BASE, mddt, MDDT_TABLE_SIZE);
+    printf("=============================================\n");
+    printf("MDDT:\n");
+    /* TODO: get count of entries using spirah act_cnt */
+    for (int i=0;; ++i) {
+        if ((mddt[i].addr == 0) && (mddt[i].size == 0))
+            break;
+
+        printf("%lx,%x,(%x) ", cpu_to_be64(mddt[i].addr) & ~HRMOR_BIT, cpu_to_be32(mddt[i].size), mddt[i].data_region);
+    }
+    printf("\n=============================================\n");
+
+    printf("=============================================\n");
+    printf("\nIterating through MDST and MDDT:\n");
     for (int i=0;; ++i) {
         /* NOTE: Assuming uninitialised will be all zeroes */
         if ((mdst[i].addr == 0) && (mdst[i].size == 0))
@@ -277,11 +308,13 @@ static void pnv_mpipl_preserve_mem(void) {
 
         if (mdst[i].size != mddt[i].size) {
             qemu_log_mask(LOG_TRACE, "Warning: Invalid entry, size mismatch in MDST and MDDT\n");
+            printf("Error: Invalid entry, size mismatch in MDST and MDDT\n");
             continue;
         }
 
         if (mdst[i].data_region != mddt[i].data_region) {
             qemu_log_mask(LOG_TRACE, "Warning: Invalid entry, region mismatch in MDST and MDDT\n");
+            printf("Error: Invalid entry, region mismatch in MDST and MDDT\n");
             continue;
         }
 
@@ -302,6 +335,7 @@ static void pnv_mpipl_preserve_mem(void) {
     }
 
     cpu_physical_memory_write(MDRT_TABLE_BASE, mdrt, MDRT_TABLE_SIZE);
+    printf("=============================================\n");
 }
 
 static void pnv_mpipl_save_proc_regs(void) {
