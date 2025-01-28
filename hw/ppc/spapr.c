@@ -1009,6 +1009,10 @@ static void spapr_dt_rtas(SpaprMachineState *spapr, void *fdt)
     /* Add device tree node so kernel knows fadump is supported */
     _FDT(( fdt_setprop_u32(fdt, rtas, "ibm,configure-kernel-dump", 1) ));
 
+    if (is_next_boot_fadump) {
+        _FDT(( fdt_setprop_u64(fdt, rtas, "ibm,kernel-dump", fadump_metadata.fdm_addr) ));
+    }
+
     spapr_dt_rtas_tokens(fdt, rtas);
 }
 

@@ -342,13 +342,8 @@ static void rtas_ibm_set_system_parameter(PowerPCCPU *cpu,
     rtas_st(rets, 0, ret);
 }
 
-static struct fadump_metadata {
-    bool fadump_registered;
-    bool fadump_dump_active;
-    target_ulong fdm_addr;
-} fadump_metadata;
-
-static bool is_next_boot_fadump = false;
+struct fadump_metadata fadump_metadata;
+bool is_next_boot_fadump = false;
 
 /* Preserve the memory locations registered for fadump */
 static bool fadump_preserve_mem(void) {
@@ -444,7 +439,7 @@ static bool fadump_preserve_mem(void) {
     return true;
 }
 
-static void trigger_fadump_boot(void) {
+static void trigger_fadump_boot(target_ulong spapr_retcode) {
     /* Looks like, SBE stops clocks for all cores in S0.
      * See 'stopClocksS0' in SBE source code.
      * Nearest equivalent in QEMU seems to be 'pause_all_vcpus'
@@ -453,12 +448,15 @@ static void trigger_fadump_boot(void) {
 
     /* Preserve the memory locations registered for fadump */
     if (!fadump_preserve_mem()) {
-        /**/
+        rtas_st(spapr_retcode, 0, RTAS_OUT_HW_ERROR);
+
+        qemu_system_guest_panicked(NULL);
         return;
     }
 
     /* mark next boot as fadump boot */
     is_next_boot_fadump = true;
+    fadump_metadata.fadump_registered = false;  /* reset registered for next boot */
     fadump_metadata.fadump_dump_active = true;
 
     /* TODO: Pass `mpipl` node in device tree to signify next
@@ -468,7 +466,9 @@ static void trigger_fadump_boot(void) {
     /* TODO: Does SBE really do system reset or only stop
      * clocks ? OPAL seems to think that control will not come
      * to it after it has triggered S0 interrupt. */
-    qemu_system_reset_request(SHUTDOWN_CAUSE_SUBSYSTEM_RESET);
+    qemu_system_reset_request(SHUTDOWN_CAUSE_GUEST_RESET);
+
+    rtas_st(spapr_retcode, 0, RTAS_OUT_SUCCESS);
 }
 
 /* Papr Section 7.4.9 ibm,configure-kernel-dump RTAS call */
@@ -602,7 +602,7 @@ static void rtas_ibm_os_term(PowerPCCPU *cpu,
      */
     if (fadump_metadata.fadump_registered) {
         /* If fadump boot works, control won't come back here */
-        trigger_fadump_boot();
+        return trigger_fadump_boot(rets);
     }
 
     cpu_physical_memory_read(msgaddr, msg, sizeof(msg) - 1);
@@ -762,8 +762,6 @@ target_ulong spapr_rtas_call(PowerPCCPU *cpu, SpaprMachineState *spapr,
                              uint32_t token, uint32_t nargs, target_ulong args,
                              uint32_t nret, target_ulong rets)
 {
-    printf("[ADI DEBUG] Rtas call: %x\n", token);
-
     if ((token >= RTAS_TOKEN_BASE) && (token < RTAS_TOKEN_MAX)) {
         struct rtas_call *call = rtas_table + (token - RTAS_TOKEN_BASE);
 

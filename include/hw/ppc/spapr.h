@@ -797,6 +797,15 @@ void push_sregs_to_kvm_pr(SpaprMachineState *spapr);
 #define FADUMP_ERROR_INVALID_SOURCE_ADDR		0x4000
 #define FADUMP_ERROR_LENGTH_EXCEEDS_SOURCE		0x2000
 
+extern bool is_next_boot_fadump;
+
+struct fadump_metadata {
+    bool fadump_registered;
+    bool fadump_dump_active;
+    target_ulong fdm_addr;
+};
+extern struct fadump_metadata fadump_metadata;
+
 /* Kernel Dump section info */
 struct rtas_fadump_section {
 	__be32	request_flag;
