@@ -42,6 +42,7 @@
 #include "hw/ppc/ppc.h"
 
 #include <libfdt.h>
+#include <stdio.h>
 #include "hw/ppc/spapr_drc.h"
 #include "qemu/cutils.h"
 #include "trace.h"
@@ -341,6 +342,238 @@ static void rtas_ibm_set_system_parameter(PowerPCCPU *cpu,
     rtas_st(rets, 0, ret);
 }
 
+static struct fadump_metadata {
+    bool fadump_registered;
+    bool fadump_dump_active;
+    target_ulong fdm_addr;
+} fadump_metadata;
+
+static bool is_next_boot_fadump = false;
+
+/* Preserve the memory locations registered for fadump */
+static bool fadump_preserve_mem(void) {
+    struct rtas_fadump_mem_struct fdm;
+    target_ulong next_section_addr;
+    int dump_num_sections, data_type;
+    target_ulong src_addr, src_len, dest_addr;
+    void *copy_buffer;
+
+    /* TODO: For safety, keep a copy of the fadump header registered
+     * initially and ensure fadump header at system crash time didn't
+     * change, else the header can be changed to cause a VM to crash by
+     * passing custom data to intentionally crash QEMU's asserts */
+
+    assert (fadump_metadata.fadump_registered);
+    assert (fadump_metadata.fdm_addr != -1);
+
+    cpu_physical_memory_read(fadump_metadata.fdm_addr, &fdm.header, sizeof(fdm.header));
+
+    /* Verify that we understand the fadump header version */
+    if (fdm.header.dump_format_version != cpu_to_be32(0x00000001)) {
+        /* Dump format version is unknown and likely changed from the time
+         * of fadump registration. Back out now. */
+        return false;
+    }
+
+    dump_num_sections = be16_to_cpu(fdm.header.dump_num_sections);
+
+    if (dump_num_sections > FADUMP_MAX_SECTIONS) {
+        qemu_log_mask(LOG_GUEST_ERROR,
+                "FADUMP: Too many fadump sections: %d\n", fdm.header.dump_num_sections);
+        return false;
+    }
+
+    next_section_addr = fadump_metadata.fdm_addr + be32_to_cpu(fdm.header.offset_first_dump_section);
+
+    for (int i=0; i<dump_num_sections; ++i) {
+        cpu_physical_memory_read(next_section_addr, &fdm.rgn[i], sizeof(fdm.rgn[i]));
+        next_section_addr += sizeof(fdm.rgn[i]);
+
+        data_type = be16_to_cpu( fdm.rgn[i].source_data_type );
+        src_addr = be64_to_cpu( fdm.rgn[i].source_address );
+        src_len = be64_to_cpu( fdm.rgn[i].source_len );
+        dest_addr = be64_to_cpu( fdm.rgn[i].destination_address );
+
+        /* Reset error_flags & bytes_dumped for now */
+        fdm.rgn[i].error_flags = 0;
+        fdm.rgn[i].bytes_dumped = 0;
+
+        if (be32_to_cpu(fdm.rgn[i].request_flag) != FADUMP_REQUEST_FLAG) {
+            qemu_log_mask(LOG_UNIMP, "FADUMP: Skipping copying region as not requested\n");
+            continue;
+        }
+
+        switch (data_type) {
+        case FADUMP_CPU_STATE_DATA:
+            /* TODO: Add cpu state data */
+            break;
+        case FADUMP_HPTE_REGION:
+            /* TODO: Add hpte state data */
+            break;
+        case FADUMP_REAL_MODE_REGION:
+        case FADUMP_PARAM_AREA:
+            /* If source and destination are same (eg. param area), leave
+             * it as-is */
+            if (src_addr != dest_addr) {
+                /* Copy the source to destination */
+                copy_buffer = malloc(src_len + 1);
+                if (copy_buffer == NULL) {
+                    qemu_log_mask(LOG_GUEST_ERROR,
+                        "QEMU: Failed allocating memory for copying reserved memory regions\n");
+                    fdm.rgn[i].error_flags = cpu_to_be16(FADUMP_ERROR_LENGTH_EXCEEDS_SOURCE);
+                    
+                    continue;
+                }
+
+                cpu_physical_memory_read(src_addr, copy_buffer, src_len);
+                cpu_physical_memory_write(dest_addr, copy_buffer, src_len);
+                free(copy_buffer);
+            }
+
+            fdm.rgn[i].bytes_dumped = cpu_to_be64(src_len);
+
+            break;
+        default:
+            qemu_log_mask(LOG_GUEST_ERROR,
+                "FADUMP: Skipping unknown source data type: %d\n", data_type);
+
+            fdm.rgn[i].error_flags = cpu_to_be16(FADUMP_ERROR_INVALID_DATA_TYPE);
+        }
+    }
+
+    return true;
+}
+
+static void trigger_fadump_boot(void) {
+    /* Looks like, SBE stops clocks for all cores in S0.
+     * See 'stopClocksS0' in SBE source code.
+     * Nearest equivalent in QEMU seems to be 'pause_all_vcpus'
+     */
+    pause_all_vcpus();
+
+    /* Preserve the memory locations registered for fadump */
+    if (!fadump_preserve_mem()) {
+        /**/
+        return;
+    }
+
+    /* mark next boot as fadump boot */
+    is_next_boot_fadump = true;
+    fadump_metadata.fadump_dump_active = true;
+
+    /* TODO: Pass `mpipl` node in device tree to signify next
+     * boot is an MPIPL boot */
+
+    /* Then do a guest reset */
+    /* TODO: Does SBE really do system reset or only stop
+     * clocks ? OPAL seems to think that control will not come
+     * to it after it has triggered S0 interrupt. */
+    qemu_system_reset_request(SHUTDOWN_CAUSE_SUBSYSTEM_RESET);
+}
+
+/* Papr Section 7.4.9 ibm,configure-kernel-dump RTAS call */
+static void rtas_configure_kernel_dump(PowerPCCPU *cpu,
+                                   SpaprMachineState *spapr,
+                                   uint32_t token, uint32_t nargs,
+                                   target_ulong args,
+                                   uint32_t nret, target_ulong rets)
+{
+    struct rtas_fadump_mem_struct fdm;
+    target_ulong cmd = rtas_ld(args, 0);
+    target_ulong fdm_addr = rtas_ld(args, 1);
+    target_ulong fdm_size = rtas_ld(args, 2);
+
+    /* Number outputs has to be 1 */
+    if (nret != 1) {
+        qemu_log_mask(LOG_GUEST_ERROR,
+                "FADUMP: ibm,configure-kernel-dump RTAS called with nret != 1.\n");
+        return;
+    }
+
+    /* Number inputs has to be 3 */
+    if (nargs != 3) {
+        rtas_st(rets, 0, RTAS_OUT_PARAM_ERROR);
+        return;
+    }
+
+    /* TODO: Ensure fdm_addr points to a valid RMR-memory buffer */
+
+    /**
+     * TODO:
+     * R1–7.4.9–7. For the Configure Platform Assisted Kernel Dump Option: The platform must present the RTAS
+     * property, “ibm,configure-kernel-dump-sizes” in the OF device tree, which describes how much
+     * space is required to store dump data for the firmware provided dump sections, where the firmware defined
+     * dump sections are:
+     *  0x0001 = CPU State Data
+     *  0x0002 = Hardware Page Table for Real Mode Region
+     * 
+     * R1–7.4.9–8. For the Configure Platform Assisted Kernel Dump Option: The platform must present the RTAS
+     * property, “ibm-configure-kernel-dump-version” in the OF device tree.
+     */
+
+    switch (cmd) {
+    case FADUMP_CMD_REGISTER:
+        if (fadump_metadata.fadump_registered) {
+            /* Fadump already registered */
+            rtas_st(rets, 0, RTAS_OUT_DUMP_ALREADY_REGISTERED);
+            return;
+        }
+
+        if (fadump_metadata.fadump_dump_active == 1) {
+            rtas_st(rets, 0, RTAS_OUT_DUMP_ACTIVE);
+            return;
+        }
+
+        if (fdm_size < sizeof(struct rtas_fadump_section_header)) {
+            hcall_dprintf("FADUMP: fadump header size is invalid: %lu\n", fdm_size);
+            rtas_st(rets, 0, RTAS_OUT_PARAM_ERROR);
+            return;
+        }
+
+        if (fdm_addr <= 0) {
+            qemu_log_mask(LOG_GUEST_ERROR,
+                "FADUMP: ibm,configure-kernel-dump RTAS called with invalid fdm address: %ld\n", fdm_addr);
+            rtas_st(rets, 0, RTAS_OUT_PARAM_ERROR);
+            return;
+        }
+
+        cpu_physical_memory_read(fdm_addr, &fdm.header, sizeof(fdm.header));
+
+        /* Verify that we understand the fadump header version */
+        if (fdm.header.dump_format_version != cpu_to_be32(0x00000001)) {
+            hcall_dprintf("FADUMP: Unknown fadump header version: 0x%x\n", fdm.header.dump_format_version);
+            rtas_st(rets, 0, RTAS_OUT_PARAM_ERROR);
+            return;
+        }
+
+        fadump_metadata.fadump_registered = true;
+        fadump_metadata.fadump_dump_active = false;
+        fadump_metadata.fdm_addr = fdm_addr;
+        break;
+    case FADUMP_CMD_UNREGISTER:
+        if (fadump_metadata.fadump_dump_active == 1) {
+            rtas_st(rets, 0, RTAS_OUT_DUMP_ACTIVE);
+            return;
+        }
+
+        fadump_metadata.fadump_registered = true;
+        fadump_metadata.fadump_dump_active = false;
+        fadump_metadata.fdm_addr = -1;
+        break;
+    case FADUMP_CMD_INVALIDATE:
+        fadump_metadata.fadump_registered = false;
+        fadump_metadata.fadump_dump_active = false;
+        fadump_metadata.fdm_addr = -1;
+        break;
+    default:
+        hcall_dprintf("Unknown RTAS token 0x%x\n", token);
+        rtas_st(rets, 0, RTAS_OUT_PARAM_ERROR);
+        return;
+    }
+
+    rtas_st(rets, 0, RTAS_OUT_SUCCESS);
+}
+
 static void rtas_ibm_os_term(PowerPCCPU *cpu,
                             SpaprMachineState *spapr,
                             uint32_t token, uint32_t nargs,
@@ -349,6 +582,28 @@ static void rtas_ibm_os_term(PowerPCCPU *cpu,
 {
     target_ulong msgaddr = rtas_ld(args, 0);
     char msg[512];
+
+    /* TODO: Handle if fadump is registered */
+    /*
+     * R1–7.4.9–3. When the platform receives an ibm,os-term RTAS call, or on a
+     * system reset without an ibm,nmi-interlock RTAS call, if the platform
+     * has a dump structure registered through the ibm,configure-kernel-dump
+     * call, the platform must process each registered kernel dump section as
+     * required and, when available, present the dump structure information to
+     * the operating system through the “ibm,kernel-dump” property, updated
+     * with status for each dump section, until the dump has been invalidated
+     * through the ibm,configure-kernel-dump RTAS call.
+     */
+    /* TODO later:
+     *
+     * R1–7.4.9–9. For the Configure Platform Assisted Kernel Dump Option: After a dump registration is disabled
+     * (for example, by a partition migration operation), calls to ibm,os-term must return to the OS as though a
+     * dump was not registered.
+     */
+    if (fadump_metadata.fadump_registered) {
+        /* If fadump boot works, control won't come back here */
+        trigger_fadump_boot();
+    }
 
     cpu_physical_memory_read(msgaddr, msg, sizeof(msg) - 1);
     msg[sizeof(msg) - 1] = 0;
@@ -507,6 +762,8 @@ target_ulong spapr_rtas_call(PowerPCCPU *cpu, SpaprMachineState *spapr,
                              uint32_t token, uint32_t nargs, target_ulong args,
                              uint32_t nret, target_ulong rets)
 {
+    printf("[ADI DEBUG] Rtas call: %x\n", token);
+
     if ((token >= RTAS_TOKEN_BASE) && (token < RTAS_TOKEN_MAX)) {
         struct rtas_call *call = rtas_table + (token - RTAS_TOKEN_BASE);
 
@@ -656,6 +913,10 @@ static void core_rtas_register_types(void)
                         rtas_ibm_nmi_register);
     spapr_rtas_register(RTAS_IBM_NMI_INTERLOCK, "ibm,nmi-interlock",
                         rtas_ibm_nmi_interlock);
+
+    /* Register Fadump rtas call */
+    spapr_rtas_register(RTAS_CONFIGURE_KERNEL_DUMP, "ibm,configure-kernel-dump",
+                        rtas_configure_kernel_dump);
 
     qtest_set_command_cb(spapr_qtest_callback);
 }

@@ -1552,6 +1552,9 @@ target_ulong spapr_hypercall(PowerPCCPU *cpu, target_ulong opcode,
 {
     SpaprMachineState *spapr = SPAPR_MACHINE(qdev_get_machine());
 
+    if (opcode != 0x58 && opcode != 0xe0 && opcode != 0x54)
+        printf("[ADI DEBUG] Hcall: %lx\n", opcode);
+
     if ((opcode <= MAX_HCALL_OPCODE)
         && ((opcode & 0x3) == 0)) {
         spapr_hcall_fn fn = papr_hypercall_table[opcode / 4];
