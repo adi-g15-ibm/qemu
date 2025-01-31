@@ -347,11 +347,12 @@ bool is_next_boot_fadump = false;
 
 /* Preserve the memory locations registered for fadump */
 static bool fadump_preserve_mem(void) {
-    struct rtas_fadump_mem_struct fdm;
     target_ulong next_section_addr;
     int dump_num_sections, data_type;
     target_ulong src_addr, src_len, dest_addr;
     void *copy_buffer;
+
+    struct rtas_fadump_mem_struct *fdm = &fadump_metadata.registered_fdm;
 
     /* TODO: For safety, keep a copy of the fadump header registered
      * initially and ensure fadump header at system crash time didn't
@@ -361,39 +362,39 @@ static bool fadump_preserve_mem(void) {
     assert (fadump_metadata.fadump_registered);
     assert (fadump_metadata.fdm_addr != -1);
 
-    cpu_physical_memory_read(fadump_metadata.fdm_addr, &fdm.header, sizeof(fdm.header));
+    cpu_physical_memory_read(fadump_metadata.fdm_addr, &fdm->header, sizeof(fdm->header));
 
     /* Verify that we understand the fadump header version */
-    if (fdm.header.dump_format_version != cpu_to_be32(0x00000001)) {
+    if (fdm->header.dump_format_version != cpu_to_be32(0x00000001)) {
         /* Dump format version is unknown and likely changed from the time
          * of fadump registration. Back out now. */
         return false;
     }
 
-    dump_num_sections = be16_to_cpu(fdm.header.dump_num_sections);
+    dump_num_sections = be16_to_cpu(fdm->header.dump_num_sections);
 
     if (dump_num_sections > FADUMP_MAX_SECTIONS) {
         qemu_log_mask(LOG_GUEST_ERROR,
-                "FADUMP: Too many fadump sections: %d\n", fdm.header.dump_num_sections);
+                "FADUMP: Too many fadump sections: %d\n", fdm->header.dump_num_sections);
         return false;
     }
 
-    next_section_addr = fadump_metadata.fdm_addr + be32_to_cpu(fdm.header.offset_first_dump_section);
+    next_section_addr = fadump_metadata.fdm_addr + be32_to_cpu(fdm->header.offset_first_dump_section);
 
     for (int i=0; i<dump_num_sections; ++i) {
-        cpu_physical_memory_read(next_section_addr, &fdm.rgn[i], sizeof(fdm.rgn[i]));
-        next_section_addr += sizeof(fdm.rgn[i]);
+        cpu_physical_memory_read(next_section_addr, &fdm->rgn[i], sizeof(fdm->rgn[i]));
+        next_section_addr += sizeof(fdm->rgn[i]);
 
-        data_type = be16_to_cpu( fdm.rgn[i].source_data_type );
-        src_addr = be64_to_cpu( fdm.rgn[i].source_address );
-        src_len = be64_to_cpu( fdm.rgn[i].source_len );
-        dest_addr = be64_to_cpu( fdm.rgn[i].destination_address );
+        data_type = be16_to_cpu( fdm->rgn[i].source_data_type );
+        src_addr = be64_to_cpu( fdm->rgn[i].source_address );
+        src_len = be64_to_cpu( fdm->rgn[i].source_len );
+        dest_addr = be64_to_cpu( fdm->rgn[i].destination_address );
 
         /* Reset error_flags & bytes_dumped for now */
-        fdm.rgn[i].error_flags = 0;
-        fdm.rgn[i].bytes_dumped = 0;
+        fdm->rgn[i].error_flags = 0;
+        fdm->rgn[i].bytes_dumped = 0;
 
-        if (be32_to_cpu(fdm.rgn[i].request_flag) != FADUMP_REQUEST_FLAG) {
+        if (be32_to_cpu(fdm->rgn[i].request_flag) != FADUMP_REQUEST_FLAG) {
             qemu_log_mask(LOG_UNIMP, "FADUMP: Skipping copying region as not requested\n");
             continue;
         }
@@ -415,7 +416,7 @@ static bool fadump_preserve_mem(void) {
                 if (copy_buffer == NULL) {
                     qemu_log_mask(LOG_GUEST_ERROR,
                         "QEMU: Failed allocating memory for copying reserved memory regions\n");
-                    fdm.rgn[i].error_flags = cpu_to_be16(FADUMP_ERROR_LENGTH_EXCEEDS_SOURCE);
+                    fdm->rgn[i].error_flags = cpu_to_be16(FADUMP_ERROR_LENGTH_EXCEEDS_SOURCE);
                     
                     continue;
                 }
@@ -425,14 +426,14 @@ static bool fadump_preserve_mem(void) {
                 free(copy_buffer);
             }
 
-            fdm.rgn[i].bytes_dumped = cpu_to_be64(src_len);
+            fdm->rgn[i].bytes_dumped = cpu_to_be64(src_len);
 
             break;
         default:
             qemu_log_mask(LOG_GUEST_ERROR,
                 "FADUMP: Skipping unknown source data type: %d\n", data_type);
 
-            fdm.rgn[i].error_flags = cpu_to_be16(FADUMP_ERROR_INVALID_DATA_TYPE);
+            fdm->rgn[i].error_flags = cpu_to_be16(FADUMP_ERROR_INVALID_DATA_TYPE);
         }
     }
 
