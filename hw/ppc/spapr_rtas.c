@@ -350,7 +350,7 @@ static bool fadump_preserve_mem(void) {
     target_ulong next_section_addr;
     int dump_num_sections, data_type;
     target_ulong src_addr, src_len, dest_addr;
-    void *copy_buffer;
+    void *buffer;
 
     struct rtas_fadump_mem_struct *fdm = &fadump_metadata.registered_fdm;
 
@@ -400,9 +400,159 @@ static bool fadump_preserve_mem(void) {
         }
 
         switch (data_type) {
-        case FADUMP_CPU_STATE_DATA:
+        case FADUMP_CPU_STATE_DATA: {
             /* TODO: Add cpu state data */
+            /* TODO: add the error checking to see if we got enough memory
+             * reserved for the cpu state data *
+
+            *static inline SpaprCpuState *spapr_cpu_state(PowerPCCPU *cpu)
+             * ?*
+            *     CPUPPCState *env = &cpu->env;
+             *     struct CPUArchState {
+    * Most commonly used resources during translated code execution first *
+    target_ulong gpr[32];  * general purpose registers *
+    target_ulong gprh[32]; * storage for GPR MSB, used by the SPE extension *
+
+ */
+
+            /**
+             *
+             * Good for upstream patches in qemu:
+             * **
+ * vmstate_register() - legacy function to register state
+ * serialisation description
+ *
+ * New code shouldn't be using this function as QOM-ified devices have
+ * dc->vmsd to store the serialisation description.
+ *
+ * Returns: 0 on success, -1 on failure
+ *
+static inline int vmstate_register(VMStateIf *obj, int instance_id,
+                                   const VMStateDescription *vmsd,
+                                   void *opaque)
+{
+    return vmstate_register_with_alias_id(obj, instance_id, vmsd,
+                                          opaque, -1, 0, NULL);
+}
+
+**
+ * vmstate_replace_hack_for_ppc() - ppc used to abuse vmstate_register
+ *
+ * Don't even think about using this function in new code.
+ *
+ * Returns: 0 on success, -1 on failure
+ *
+int vmstate_replace_hack_for_ppc(VMStateIf *obj, int instance_id,
+                                 const VMStateDescription *vmsd,
+                                 void *opaque);
+
+
+    * fixme: should register things through the machinestate's qdev
+     * interface, this is a legacy from the spaprenvironment structure
+     * which predated machinestate but had a similar function *
+    vmstate_register(NULL, 0, &vmstate_spapr, spapr);
+    register_savevm_live("spapr/htab", VMSTATE_INSTANCE_ID_ANY, 1,
+                         &savevm_htab_handlers, spapr);
+
+
+             *
+             */
+
+            uint32_t num_cpus = 0;
+            CPUState *cpu;
+            CPUPPCState *env;
+            PowerPCCPU *ppc_cpu;
+
+            CPU_FOREACH(cpu) {
+                ++num_cpus;
+            }
+
+            struct rtas_fadump_reg_save_area_header reg_save_hdr;
+            reg_save_hdr.magic_number = cpu_to_be64(fadump_str_to_u64("REGSAVE"));
+            reg_save_hdr.version = cpu_to_be32(1); /* Not checked be Linux */
+            reg_save_hdr.num_cpu_offset = 0; /* Immediately followed by num cpus */
+
+            #define _FADUMP_NUM_PER_CPU_REGS (32 /*gprs*/ + 9 /*nia,msr,ctr,lr,xer,cr,dar,dsisr*/)
+            #define _FADUMP_REG_ENTRIES_SIZE (num_cpus * _FADUMP_NUM_PER_CPU_REGS * sizeof(struct rtas_fadump_reg_entry))
+
+            /* TODO: declare in a better form */
+            struct rtas_fadump_reg_entry **reg_entries =
+                malloc(_FADUMP_REG_ENTRIES_SIZE);
+            struct rtas_fadump_reg_entry *curr_reg_entry = (struct rtas_fadump_reg_entry*)reg_entries;
+
+            /* This must loop num_cpus time */
+            CPU_FOREACH(cpu) {
+                ppc_cpu = POWERPC_CPU(env);
+                env = cpu_env(cpu);
+
+                curr_reg_entry->reg_id = cpu_to_be32(fadump_str_to_u64("CPUSTRT"));
+                /*TODO: how to access ArchCPU*/
+                curr_reg_entry->reg_value = ppc_cpu->vcpu_id;
+                ++curr_reg_entry;
+
+                /* Save the GPRs */
+                for (int gpr_id=0; gpr_id<32; ++gpr_id) {
+#define RTAS_FADUMP_GPR_MASK	0xffffff0000000000
+#define RTAS_FADUMP_GPR_SHIFT 40
+#define RTAS_FADUMP_CPU_ID_MASK			((1UL << 32) - 1)
+
+                    curr_reg_entry->reg_id = cpu_to_be64((fadump_str_to_u64("GPR") << RTAS_FADUMP_GPR_SHIFT) | gpr_id);
+                    curr_reg_entry->reg_value = env->gpr[i];
+                    ++curr_reg_entry;
+                }
+
+                curr_reg_entry->reg_id = cpu_to_be64(fadump_str_to_u64("NIA"));
+                curr_reg_entry->reg_value = env->nip;
+                ++curr_reg_entry;
+
+                curr_reg_entry->reg_id = cpu_to_be64(fadump_str_to_u64("MSR"));
+                curr_reg_entry->reg_value = env->msr;
+                ++curr_reg_entry;
+
+                curr_reg_entry->reg_id = cpu_to_be64(fadump_str_to_u64("CTR"));
+                curr_reg_entry->reg_value = env->ctr;
+                ++curr_reg_entry;
+
+                curr_reg_entry->reg_id = cpu_to_be64(fadump_str_to_u64("LR"));
+                curr_reg_entry->reg_value = env->lr;
+                ++curr_reg_entry;
+
+                curr_reg_entry->reg_id = cpu_to_be64(fadump_str_to_u64("XER"));
+                curr_reg_entry->reg_value = env->xer;
+                ++curr_reg_entry;
+
+                /* TODO: Handle CR register */
+                curr_reg_entry->reg_id = cpu_to_be64(fadump_str_to_u64("CR"));
+                curr_reg_entry->reg_value = 0 /*env->spr[SPR_CR]*/;
+                ++curr_reg_entry;
+
+                curr_reg_entry->reg_id = cpu_to_be64(fadump_str_to_u64("DAR"));
+                curr_reg_entry->reg_value = env->spr[SPR_DAR];
+                ++curr_reg_entry;
+
+                curr_reg_entry->reg_id = cpu_to_be64(fadump_str_to_u64("DSISR"));
+                curr_reg_entry->reg_value = env->spr[SPR_DSISR];
+                ++curr_reg_entry;
+
+                curr_reg_entry->reg_id = cpu_to_be64(fadump_str_to_u64("CPUEND"));
+                ++curr_reg_entry;
+            }
+
+            target_ulong addr = dest_addr;
+            cpu_physical_memory_write(addr, &reg_save_hdr, sizeof(reg_save_hdr));
+            addr += sizeof(reg_save_hdr);
+
+            /* Write num_cpus */
+            num_cpus = cpu_to_be32(num_cpus);
+            cpu_physical_memory_write(addr, &num_cpus, sizeof(__be32));
+            addr += sizeof(__be32);
+
+            /* Write the register entries */
+            cpu_physical_memory_write(addr, reg_entries, _FADUMP_REG_ENTRIES_SIZE);
+            addr += _FADUMP_REG_ENTRIES_SIZE;
+
             break;
+        }
         case FADUMP_HPTE_REGION:
             /* TODO: Add hpte state data */
             break;
@@ -412,8 +562,8 @@ static bool fadump_preserve_mem(void) {
              * it as-is */
             if (src_addr != dest_addr) {
                 /* Copy the source to destination */
-                copy_buffer = malloc(src_len + 1);
-                if (copy_buffer == NULL) {
+                buffer = malloc(src_len + 1);
+                if (buffer == NULL) {
                     qemu_log_mask(LOG_GUEST_ERROR,
                         "QEMU: Failed allocating memory for copying reserved memory regions\n");
                     fdm->rgn[i].error_flags = cpu_to_be16(FADUMP_ERROR_LENGTH_EXCEEDS_SOURCE);
@@ -421,9 +571,9 @@ static bool fadump_preserve_mem(void) {
                     continue;
                 }
 
-                cpu_physical_memory_read(src_addr, copy_buffer, src_len);
-                cpu_physical_memory_write(dest_addr, copy_buffer, src_len);
-                free(copy_buffer);
+                cpu_physical_memory_read(src_addr, buffer, src_len);
+                cpu_physical_memory_write(dest_addr, buffer, src_len);
+                free(buffer);
             }
 
             fdm->rgn[i].bytes_dumped = cpu_to_be64(src_len);

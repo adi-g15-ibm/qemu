@@ -830,6 +830,45 @@ struct rtas_fadump_mem_struct {
 	struct rtas_fadump_section		rgn[FADUMP_MAX_SECTIONS];
 };
 
+/*
+ * The firmware-assisted dump format.
+ *
+ * The register save area is an area in the partition's memory used to preserve
+ * the register contents (CPU state data) for the active CPUs during a firmware
+ * assisted dump. The dump format contains register save area header followed
+ * by register entries. Each list of registers for a CPU starts with "CPUSTRT"
+ * and ends with "CPUEND".
+ */
+
+/* Register save area header. */
+struct rtas_fadump_reg_save_area_header {
+	__be64		magic_number;
+	__be32		version;
+	__be32		num_cpu_offset;
+};
+
+/* Register entry. */
+struct rtas_fadump_reg_entry {
+	__be64		reg_id;
+	__be64		reg_value;
+};
+
+/*
+ * Copy the ascii values for first 8 characters from a string into u64
+ * variable at their respective indexes.
+ * e.g.
+ *  The string "FADMPINF" will be converted into 0x4641444d50494e46
+ */
+static inline uint64_t fadump_str_to_u64(const char *str)
+{
+	uint64_t val = 0;
+	int i;
+
+	for (i = 0; i < sizeof(val); i++)
+		val = (*str) ? (val << 8) | *str++ : val << 8;
+	return val;
+}
+
 extern bool is_next_boot_fadump;
 
 struct fadump_metadata {
