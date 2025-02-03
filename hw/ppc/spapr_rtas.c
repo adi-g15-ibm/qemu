@@ -485,7 +485,7 @@ int vmstate_replace_hack_for_ppc(VMStateIf *obj, int instance_id,
                 ppc_cpu = POWERPC_CPU(cpu);
                 env = cpu_env(cpu);
 
-                curr_reg_entry->reg_id = cpu_to_be32(fadump_str_to_u64("CPUSTRT"));
+                curr_reg_entry->reg_id = cpu_to_be64(fadump_str_to_u64("CPUSTRT"));
                 /*TODO: how to access ArchCPU*/
                 curr_reg_entry->reg_value = ppc_cpu->vcpu_id;
                 ++curr_reg_entry;
