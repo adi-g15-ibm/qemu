@@ -472,7 +472,7 @@ int vmstate_replace_hack_for_ppc(VMStateIf *obj, int instance_id,
             reg_save_hdr.version = cpu_to_be32(1); /* Not checked be Linux */
             reg_save_hdr.num_cpu_offset = cpu_to_be32(sizeof(struct rtas_fadump_reg_save_area_header)); /* Immediately followed by num cpus */
 
-            #define _FADUMP_NUM_PER_CPU_REGS (32 /*gprs*/ + 9 /*nia,msr,ctr,lr,xer,cr,dar,dsisr*/)
+            #define _FADUMP_NUM_PER_CPU_REGS (32 /*gprs*/ + 9 /*nia,msr,ctr,lr,xer,cr,dar,dsisr*/ + 2 /*CPUSTRT & CPUEND*/)
             #define _FADUMP_REG_ENTRIES_SIZE (num_cpus * _FADUMP_NUM_PER_CPU_REGS * sizeof(struct rtas_fadump_reg_entry))
 
             /* TODO: declare in a better form */
