@@ -482,7 +482,7 @@ int vmstate_replace_hack_for_ppc(VMStateIf *obj, int instance_id,
 
             /* This must loop num_cpus time */
             CPU_FOREACH(cpu) {
-                ppc_cpu = POWERPC_CPU(env);
+                ppc_cpu = POWERPC_CPU(cpu);
                 env = cpu_env(cpu);
 
                 curr_reg_entry->reg_id = cpu_to_be32(fadump_str_to_u64("CPUSTRT"));
