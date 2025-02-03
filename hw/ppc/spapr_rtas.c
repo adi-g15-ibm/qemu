@@ -350,7 +350,9 @@ static bool fadump_preserve_mem(void) {
     target_ulong next_section_addr;
     int dump_num_sections, data_type;
     target_ulong src_addr, src_len, dest_addr;
+    target_ulong cpu_state_addr, cpu_state_len = 0;
     void *buffer;
+    void *cpu_state_buffer;
 
     struct rtas_fadump_mem_struct *fdm = &fadump_metadata.registered_fdm;
 
@@ -486,7 +488,6 @@ int vmstate_replace_hack_for_ppc(VMStateIf *obj, int instance_id,
                 env = cpu_env(cpu);
 
                 curr_reg_entry->reg_id = cpu_to_be64(fadump_str_to_u64("CPUSTRT"));
-                /*TODO: how to access ArchCPU*/
                 curr_reg_entry->reg_value = ppc_cpu->vcpu_id;
                 ++curr_reg_entry;
 
@@ -538,18 +539,30 @@ int vmstate_replace_hack_for_ppc(VMStateIf *obj, int instance_id,
                 ++curr_reg_entry;
             }
 
-            target_ulong addr = dest_addr;
-            cpu_physical_memory_write(addr, &reg_save_hdr, sizeof(reg_save_hdr));
-            addr += sizeof(reg_save_hdr);
+            cpu_state_len = 0;
+            cpu_state_len += sizeof(reg_save_hdr);  /* reg save header */
+            cpu_state_len += sizeof(__be32);        /* num_cpus */
+            cpu_state_len += _FADUMP_REG_ENTRIES_SIZE;  /* reg entries */
+
+            cpu_state_addr = dest_addr;
+            cpu_state_buffer = g_malloc(cpu_state_len);
+
+            uint64_t offset = 0;
+            memcpy(cpu_state_buffer + offset, &reg_save_hdr, sizeof(reg_save_hdr));
+            offset += sizeof(reg_save_hdr);
 
             /* Write num_cpus */
             num_cpus = cpu_to_be32(num_cpus);
-            cpu_physical_memory_write(addr, &num_cpus, sizeof(__be32));
-            addr += sizeof(__be32);
+            memcpy(cpu_state_buffer + offset, &num_cpus, sizeof(__be32));
+            offset += sizeof(__be32);
+            num_cpus = be32_to_cpu(num_cpus);   /* restore num_cpus value, used later */
 
             /* Write the register entries */
-            cpu_physical_memory_write(addr, reg_entries, _FADUMP_REG_ENTRIES_SIZE);
-            addr += _FADUMP_REG_ENTRIES_SIZE;
+            memcpy(cpu_state_buffer + offset, reg_entries, _FADUMP_REG_ENTRIES_SIZE);
+            offset += _FADUMP_REG_ENTRIES_SIZE;
+
+            /* We will write the cpu state data later, as otherwise it
+             * might get overwritten by other fadump regions */
 
             break;
         }
@@ -586,6 +599,10 @@ int vmstate_replace_hack_for_ppc(VMStateIf *obj, int instance_id,
             fdm->rgn[i].error_flags = cpu_to_be16(FADUMP_ERROR_INVALID_DATA_TYPE);
         }
     }
+
+    /* Writing the reg save area */
+    cpu_physical_memory_write(cpu_state_addr, cpu_state_buffer, cpu_state_len);
+    g_free(cpu_state_buffer);
 
     return true;
 }
